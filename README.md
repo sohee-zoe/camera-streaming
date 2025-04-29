@@ -9,7 +9,12 @@ pip install opencv-python opencv-contrib-python matplotlib numpy
 python camera_calibration.py --size 8x6 --square 0.025 --path "./frames" --output "./camera_params/camera_parameter.yaml"
 ```
 
+
+# 카메라 스트리밍
+
 `config.py`에서 설정값 변경
+
+
 
 ## UDP 송신
 ```
@@ -19,6 +24,7 @@ python run_udp_sender.py --target_ip <> --port <>
 # 캘리브레이션 왜곡 보정 X
 python run_udp_sender.py --no_undistort
 ```
+
 
 ## UDP 수신
 ```
