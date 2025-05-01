@@ -18,7 +18,7 @@ signal.signal(signal.SIGINT, signal_handler)
 def main():
     global streamer_instance
     parser = argparse.ArgumentParser(description="USB 카메라 로컬 스트리머 (클래스 기반)")
-    parser.add_argument("--camera", type=int, default=config.UDP_CAMERA_INDEX, help=f"카메라 인덱스 (기본값: {config.UDP_CAMERA_INDEX})")
+    parser.add_argument("--camera", type=int, default=config.USB_CAMERA_INDEX, help=f"카메라 인덱스 (기본값: {config.USB_CAMERA_INDEX})")
     parser.add_argument("--width", type=int, default=640, help="카메라 프레임 너비")
     parser.add_argument("--height", type=int, default=480, help="카메라 프레임 높이")
     parser.add_argument("--fps", type=int, default=30, help="카메라 목표 FPS")
