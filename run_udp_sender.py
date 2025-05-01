@@ -11,7 +11,7 @@ from udp_sender import UdpStreamSender # 정의된 클래스 임포트
 # --- 종료 처리를 위한 전역 변수 및 핸들러 ---
 sender_instance = None # 클래스 인스턴스 저장용
 def signal_handler(sig, frame):
-    print("\n[정보] Ctrl+C 감지. 송신기 종료 중...")
+    print("\n[INFO] Ctrl+C 감지. 송신기 종료 중...")
     if sender_instance:
         sender_instance.stop_streaming()
     # sys.exit(0) # 필요시 강제 종료 (보통 stop_streaming 후 자동 종료됨)
@@ -61,7 +61,7 @@ def main():
         #         break
 
     except (IOError, socket.error, Exception) as e:
-        print(f"[치명적 오류] 송신기 초기화 또는 실행 중 오류 발생: {e}")
+        print(f"[ERROR] 송신기 초기화 또는 실행 중 오류 발생: {e}")
         if sender_instance:
             sender_instance.stop_streaming()
         sys.exit(1)

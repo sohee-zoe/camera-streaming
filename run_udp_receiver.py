@@ -13,7 +13,7 @@ from stream_displayer import StreamDisplayer
 receiver_instance = None
 displayer_instance = None
 def signal_handler(sig, frame):
-    print("\n[정보] Ctrl+C 감지. 수신기 및 디스플레이어 종료 중...")
+    print("\n[INFO] Ctrl+C 감지. 수신기 및 디스플레이어 종료 중...")
     if displayer_instance:
          # 디스플레이 루프가 메인 스레드에 있으므로 running 플래그만 설정
          displayer_instance.running = False
@@ -58,17 +58,17 @@ def main():
         displayer_instance.start_display()
 
         # --- start_display()가 blocking 함수이므로, 여기 도달하면 종료된 것 ---
-        print("[정보] 디스플레이 루프 정상 종료됨. 자원 정리 중...")
+        print("[INFO] 디스플레이 루프 정상 종료됨. 자원 정리 중...")
 
     except (IOError, socket.error, Exception) as e:
-        print(f"[치명적 오류] 수신기 초기화 또는 실행 중 오류 발생: {e}")
+        print(f"[ERROR] 수신기 초기화 또는 실행 중 오류 발생: {e}")
     finally:
         # 프로그램 종료 시 최종 정리 (signal handler에서 호출되지 않았을 경우 대비)
         if receiver_instance and receiver_instance.running_flag.is_set():
             receiver_instance.stop_receiving()
         if displayer_instance and displayer_instance.running:
              displayer_instance.stop_display()
-        print("[정보] 수신기 애플리케이션 종료.")
+        print("[INFO] 수신기 애플리케이션 종료.")
 
 
 if __name__ == "__main__":
