@@ -102,7 +102,7 @@ class UdpStreamReceiver:
 
                 # 프레임 완성 확인
                 if len(frame_entry['chunks']) == frame_entry['total']:
-                    # print(f"[디버그] 프레임 {frame_id} 완성 ({frame_entry['total']} 청크).")
+                    # print(f"[DEBUG] 프레임 {frame_id} 완성 ({frame_entry['total']} 청크).")
                     sorted_chunks = [frame_entry['chunks'][i] for i in range(frame_entry['total'])]
                     full_frame_data = b"".join(sorted_chunks)
 
