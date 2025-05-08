@@ -90,7 +90,7 @@ class ArucoProcessor:
     def get_pose_data(self, corners, ids, rvecs, tvecs):
         """
         ArUco 마커의 포즈 정보를 담은 리스트를 반환합니다.
-        쿼터니언 변환과 각도 연속성 유지 로직이 포함되어 있습니다.
+        쿼터니언 변환과 각도 연속성 유지 로직, LPF 필터링이 적용되었습니다.
         """
         from scipy.spatial.transform import Rotation
 
@@ -110,29 +110,61 @@ class ArucoProcessor:
                 if quat_norm > 0:
                     quat = quat / quat_norm
 
+                # 정규화된 쿼터니언으로 새 회전 객체 생성
+                rotation = Rotation.from_quat(quat)
+
                 # 오일러 각으로 변환 (ZYX 순서)
                 euler_angles = rotation.as_euler('zyx', degrees=True)
                 rotation_z_deg = euler_angles[0]  # Z축 회전각
 
                 # 각도 연속성 유지
-                if hasattr(self, f'prev_rotation_z_{marker_id}'):
-                    prev_z = getattr(self, f'prev_rotation_z_{marker_id}')
+                marker_attr = f'prev_rotation_z_{marker_id}'
+                if hasattr(self, marker_attr):
+                    prev_z = getattr(self, marker_attr)
                     if abs(rotation_z_deg - prev_z) > 170:
                         if rotation_z_deg > 0 and prev_z < 0:
                             rotation_z_deg -= 360
                         elif rotation_z_deg < 0 and prev_z > 0:
                             rotation_z_deg += 360
 
-                # 현재 각도 저장
-                setattr(self, f'prev_rotation_z_{marker_id}', rotation_z_deg)
+                # LPF 적용 (1차 저주파 통과 필터)
+                lpf_attr = f'lpf_rotation_z_{marker_id}'
+                tau = 0.1  # 필터 시정수 (작을수록 더 많은 필터링)
+                Ts = 0.033  # 샘플링 시간 (30fps 기준)
+
+                if not hasattr(self, lpf_attr):
+                    # 첫 프레임은 필터링 없이 초기값으로 설정
+                    setattr(self, lpf_attr, rotation_z_deg)
+                    filtered_z = rotation_z_deg
+                else:
+                    # LPF 공식: y_k = (tau * y_k-1 + Ts * x_k) / (tau + Ts)
+                    prev_filtered_z = getattr(self, lpf_attr)
+                    filtered_z = (tau * prev_filtered_z + Ts * rotation_z_deg) / (tau + Ts)
+                    setattr(self, lpf_attr, filtered_z)
+
+                # 현재 원시 각도 저장 (연속성 유지용)
+                setattr(self, marker_attr, rotation_z_deg)
+
+                # 위치 정보에도 LPF 적용
+                tvec_filtered = np.zeros_like(tvec)
+                for j in range(3):  # x, y, z 각각에 대해
+                    pos_attr = f'lpf_pos_{marker_id}_{j}'
+                    if not hasattr(self, pos_attr):
+                        setattr(self, pos_attr, tvec[j, 0])
+                        tvec_filtered[j, 0] = tvec[j, 0]
+                    else:
+                        prev_filtered_pos = getattr(self, pos_attr)
+                        filtered_pos = (tau * prev_filtered_pos + Ts * tvec[j, 0]) / (tau + Ts)
+                        setattr(self, pos_attr, filtered_pos)
+                        tvec_filtered[j, 0] = filtered_pos
 
                 aruco_data.append({
                     'id': marker_id,
                     'corners': marker_corners,
                     'rvec': rvec,
-                    'tvec': tvec,
+                    'tvec': tvec_filtered,
                     'quaternion': quat,
                     'euler_angles': euler_angles,
-                    'rotation_z': rotation_z_deg
+                    'rotation_z': filtered_z  # 필터링된 Z축 회전각
                 })
         return aruco_data
