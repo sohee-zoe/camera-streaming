@@ -1,4 +1,5 @@
 # usb_streamer.py
+
 import cv2
 import numpy as np
 import config
@@ -7,6 +8,7 @@ from stream_displayer import StreamDisplayer
 import signal
 import sys
 from aruco_processor import ArucoProcessor
+
 
 class UsbStreamer:
     def __init__(self, camera_index, width, height, fps, calibration_file=None, no_undistort=False):
@@ -28,6 +30,7 @@ class UsbStreamer:
                 buffer_size=1,
                 calibration_file=self.calibration_file
             )
+
         except IOError as e:
             print(f"[ERROR] 카메라 초기화 실패: {e}")
             raise
@@ -61,16 +64,30 @@ class UsbStreamer:
             return
 
         print("[INFO] 화면 표시 루프 시작.")
+
         while self.running:
-            ret, original_frame = self.cam_handler.capture_frame(undistort=(not self.no_undistort))
+            # 원본 프레임 캡처
+            ret, original_frame = self.cam_handler.capture_frame(undistort=False)
 
             if not ret:
                 print("[WARN] 카메라 프레임 캡처 실패.")
                 continue
 
-            display_frame = original_frame.copy() # 표시용 프레임 복사
+            # 왜곡 보정 적용
+            undistorted_frame = None
+            if self.cam_handler.undistort_enabled and self.cam_handler.mapx is not None and self.cam_handler.mapy is not None:
+                try:
+                    undistorted_frame = cv2.remap(original_frame, self.cam_handler.mapx, self.cam_handler.mapy,
+                                                  cv2.INTER_LINEAR)
+                except Exception as e:
+                    print(f"[ERROR] 왜곡 보정 중 오류: {e}")
+                    undistorted_frame = original_frame
+            else:
+                undistorted_frame = original_frame
 
-            # ArUco 마커 검출 및 처리
+            display_frame = undistorted_frame.copy()  # 표시용 프레임 복사
+
+            # ArUco 마커 검출 및 처리 (왜곡 보정된 프레임 사용)
             corners, ids, rvecs, tvecs = self.aruco_processor.detect_markers(display_frame)
             aruco_data = self.aruco_processor.get_pose_data(corners, ids, rvecs, tvecs)
 
@@ -81,49 +98,58 @@ class UsbStreamer:
                     self.aruco_processor.draw_axes(display_frame, rvecs[i], tvecs[i])
 
             # ArUco 마커 pos, rot 값 콘솔 출력 및 화면 표시용 텍스트 준비
-            print("\n--- 감지된 ArUco 마커 정보 ---") # 콘솔 출력 시작
-            marker_info_text_for_display = [] # 화면 표시용 리스트 (기존 로직 활용)
+            print("\n--- 감지된 ArUco 마커 정보 ---")  # 콘솔 출력 시작
+            marker_info_text_for_display = []  # 화면 표시용 리스트
 
             cam_matrix, dist_coeffs_for_draw = self.cam_handler.get_effective_camera_parameters()
+
             if cam_matrix is not None:
-                dist_coeffs_for_draw = dist_coeffs_for_draw if dist_coeffs_for_draw is not None else np.zeros((5,), dtype=np.float32)
+                dist_coeffs_for_draw = dist_coeffs_for_draw if dist_coeffs_for_draw is not None else np.zeros((5,),
+                                                                                                              dtype=np.float32)
 
-            if aruco_data is not None:
-                for marker in aruco_data:
-                    marker_id = marker.get('id', 'N/A')
-                    tvec = marker.get('tvec')  # 변환 벡터 (카메라 좌표계 기준 위치)
-                    rvec = marker.get('rvec')  # 회전 벡터 (카메라 좌표계 기준 회전)
+                if aruco_data is not None:
+                    for marker in aruco_data:
+                        marker_id = marker.get('id', 'N/A')
+                        tvec = marker.get('tvec')  # 변환 벡터 (카메라 좌표계 기준 위치)
+                        rvec = marker.get('rvec')  # 회전 벡터 (카메라 좌표계 기준 회전)
 
-                    # 콘솔에 pos (tvec) 와 rot (rvec) 값 출력
-                    if tvec is not None:
-                        pos_str_console = f"  ID {marker_id}: Pos (tvec) = [X:{tvec[0,0]:.3f}, Y:{tvec[1,0]:.3f}, Z:{tvec[2,0]:.3f}] (단위: m, 마커 크기 설정에 따라 다름)"
-                        print(pos_str_console)
-                    if rvec is not None:
-                        rot_str_console = f"  ID {marker_id}: Rot (rvec) = [{rvec[0,0]:.3f}, {rvec[1,0]:.3f}, {rvec[2,0]:.3f}] (축-각 표현)"
-                        print(rot_str_console)
+                        # 콘솔에 pos (tvec) 와 rot (rvec) 값 출력
+                        if tvec is not None:
+                            pos_str_console = f" ID {marker_id}: Pos (tvec) = [X:{tvec[0, 0]:.3f}, Y:{tvec[1, 0]:.3f}, Z:{tvec[2, 0]:.3f}] (단위: m, 마커 크기 설정에 따라 다름)"
+                            print(pos_str_console)
+
+                        if rvec is not None:
+                            rot_str_console = f" ID {marker_id}: Rot (rvec) = [{rvec[0, 0]:.3f}, {rvec[1, 0]:.3f}, {rvec[2, 0]:.3f}] (축-각 표현)"
+                            print(rot_str_console)
+
                         # Z축 회전각 (이미 계산되어 있다면)
                         rotation_z_deg = marker.get('rotation_z')
                         if rotation_z_deg is not None:
-                            print(f"    ID {marker_id}: Z축 회전각 = {rotation_z_deg:.1f}도")
+                            print(f" ID {marker_id}: Z축 회전각 = {rotation_z_deg:.1f}도")
 
-                    try:
-                        x, y, z = (tvec[0,0], tvec[1,0], tvec[2,0]) if tvec is not None else (float('nan'), float('nan'), float('nan'))
-                        r_val = marker.get('rotation_z', float('nan'))
-                        info_str_display = f"ID {marker_id}: X={x:.2f} Y={y:.2f} Z={z:.2f} R={r_val:.1f}deg"
-                        marker_info_text_for_display.append(info_str_display)
-                    except Exception as e_draw:
-                        print(f"[오류] ID {marker_id} 시각화 정보 처리 오류: {e_draw}")
-            print("------------------------------\n") # 콘솔 출력 끝
+                        try:
+                            x, y, z = (tvec[0, 0], tvec[1, 0], tvec[2, 0]) if tvec is not None else (float('nan'),
+                                                                                                     float('nan'),
+                                                                                                     float('nan'))
+                            r_val = marker.get('rotation_z', float('nan'))
+                            info_str_display = f"ID {marker_id}: X={x:.2f} Y={y:.2f} Z={z:.2f} R={r_val:.1f}deg"
+                            marker_info_text_for_display.append(info_str_display)
+                        except Exception as e_draw:
+                            print(f"[오류] ID {marker_id} 시각화 정보 처리 오류: {e_draw}")
+
+            print("------------------------------\n")  # 콘솔 출력 끝
 
             # 화면에 텍스트 정보 그리기
             y_offset = 60
             for text_line in marker_info_text_for_display:
-                cv2.putText(display_frame, text_line, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1, cv2.LINE_AA)
+                cv2.putText(display_frame, text_line, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1,
+                            cv2.LINE_AA)
                 y_offset += 20
 
             # FPS 텍스트 화면에 표시
             cv2.putText(display_frame, f"Display FPS: {self.displayer._display_fps:.1f}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
             cv2.imshow("USB Camera Stream", display_frame)
 
             # 키 입력 처리
@@ -140,53 +166,3 @@ class UsbStreamer:
 
         print("[INFO] 화면 표시 루프 종료됨.")
         self.stop_display()
-
-# --- 종료 처리를 위한 전역 변수 및 핸들러 ---
-streamer_instance = None
-
-def signal_handler(sig, frame):
-    print("\n[정보] Ctrl+C 감지. USB 스트리머 종료 중...")
-    if streamer_instance:
-        streamer_instance.running = False
-
-signal.signal(signal.SIGINT, signal_handler)
-
-def main():
-    global streamer_instance
-    import argparse
-    parser = argparse.ArgumentParser(description="USB 카메라 로컬 스트리머 (클래스 기반)")
-    parser.add_argument("--camera", type=int, default=config.USB_CAMERA_INDEX, help=f"카메라 인덱스 (기본값: {config.USB_CAMERA_INDEX})")
-    parser.add_argument("--width", type=int, default=640, help="카메라 프레임 너비")
-    parser.add_argument("--height", type=int, default=480, help="카메라 프레임 높이")
-    parser.add_argument("--fps", type=int, default=30, help="카메라 목표 FPS")
-    parser.add_argument("--calib", type=str, default=config.GLOBAL_CALIBRATION_FILE, help="카메라 캘리브레이션 YAML 파일 경로")
-    parser.add_argument("--no_undistort", action='store_true', help="캘리브레이션 파일 있어도 왜곡 보정 안 함")
-
-    args = parser.parse_args()
-
-    try:
-        streamer_instance = UsbStreamer(
-            camera_index=args.camera,
-            width=args.width,
-            height=args.height,
-            fps=args.fps,
-            calibration_file=args.calib,
-            no_undistort=args.no_undistort
-        )
-
-        # 로컬 디스플레이 시작 (현재 스레드에서 실행, blocking)
-        streamer_instance.start_display()
-
-        # --- start_display() 종료 후 ---
-        print("[정보] USB 스트리머 루프 정상 종료됨.")
-
-    except (IOError, Exception) as e:
-        print(f"[치명적 오류] USB 스트리머 초기화 또는 실행 중 오류 발생: {e}")
-    finally:
-        # 최종 정리
-        if streamer_instance and streamer_instance.running:
-            streamer_instance.stop_display()
-        print("[정보] USB 스트리머 애플리케이션 종료.")
-
-if __name__ == "__main__":
-    main()

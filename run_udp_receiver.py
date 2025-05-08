@@ -28,8 +28,8 @@ def main():
     parser.add_argument("--buffer", type=int, default=config.CLIENT_RECV_BUFFER, help=f"UDP 수신 버퍼 크기 (기본값: {config.CLIENT_RECV_BUFFER})")
     parser.add_argument("--qsize", type=int, default=config.DEFAULT_QUEUE_MAX_SIZE, help=f"내부 프레임 큐 크기 (기본값: {config.DEFAULT_QUEUE_MAX_SIZE})")
     parser.add_argument("--skip", action='store_true', help="큐에 쌓인 오래된 프레임 건너뛰기 (StreamDisplayer용)")
-    parser.add_argument("--calib", type=str, default=config.GLOBAL_CALIBRATION_FILE, # config에 기본 캘리브레이션 파일 경로 추가 필요
-                        help="카메라 캘리브레이션 YAML 파일 경로 (ArUco 검출용)")
+    parser.add_argument("--calib", type=str, default=config.GLOBAL_CALIBRATION_FILE,
+                        help="카메라 캘리브레이션 YAML 파일 경로")
     args = parser.parse_args()
 
     try:
@@ -38,7 +38,7 @@ def main():
             listen_port=args.port,
             buffer_size=args.buffer,
             queue_size=args.qsize,
-            calibration_file=args.calib # 캘리브레이션 파일 경로 전달
+            calibration_file=args.calib
         )
 
         frame_queue = receiver_instance.get_frame_queue()

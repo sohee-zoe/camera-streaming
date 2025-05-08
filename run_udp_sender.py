@@ -29,7 +29,7 @@ def main():
     parser.add_argument("--fps", type=int, default=30, help="카메라 및 전송 목표 FPS")
     parser.add_argument("--quality", type=int, default=config.DEFAULT_JPEG_QUALITY, choices=range(0, 101), metavar="[0-100]", help=f"JPEG 품질 (기본값: {config.DEFAULT_JPEG_QUALITY})")
     parser.add_argument("--calib", type=str, default=config.JETCOBOT_CALIBRATION_FILE, help="카메라 캘리브레이션 YAML 파일 경로")
-    parser.add_argument("--no_undistort", action='store_true', help="캘리브레이션 파일 있어도 왜곡 보정 안 함")
+    # parser.add_argument("--no_undistort", action='store_true', help="캘리브레이션 파일 있어도 왜곡 보정 안 함")
     # parser.add_argument("--send_buffer", type=int, default=config.SERVER_SEND_BUFFER, help="UDP 송신 버퍼 크기") # 필요시 추가
 
     args = parser.parse_args()
@@ -44,7 +44,6 @@ def main():
             fps=args.fps,
             quality=args.quality,
             calibration_file=args.calib,
-            no_undistort=args.no_undistort
         )
 
         # 스트리밍 시작 (현재 스레드에서 실행, blocking)

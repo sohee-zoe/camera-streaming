@@ -15,6 +15,10 @@ UDP_CAMERA_INDEX = 0
 USB_CAMERA_INDEX = 2
 DEFAULT_JPEG_QUALITY = 90
 
+CAMERA_DEFAULT_WIDTH = 640
+CAMERA_DEFAULT_HEIGHT = 480
+
+
 # --- 청킹 관련 설정 ---
 # 헤더 형식: Frame ID (unsigned int, 4B), Total Chunks (unsigned short, 2B), Chunk ID (unsigned short, 2B)
 HEADER_FORMAT = "!IHH" # 네트워크 바이트 순서(!), uint32, uint16, uint16
