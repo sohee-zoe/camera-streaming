@@ -60,11 +60,11 @@ class ArucoProcessor:
                 rvecs.append(rvec)
                 tvecs.append(tvec)
 
-            return corners, ids, np.array(rvecs), np.array(tvecs)
+            return corners, ids, rejected, np.array(rvecs), np.array(tvecs)
         else:
-            return None, None, None, None
+            return None, None, None, None, None
 
-    def draw_detected_markers(self, image, corners, ids):
+    def draw_detected_markers(self, image, corners, ids, rejected=None):
         """
         이미지에 검출된 ArUco 마커를 그리고, ID를 표시합니다.
         Args:
@@ -75,6 +75,10 @@ class ArucoProcessor:
         if corners is not None and ids is not None and len(corners) > 0:
             cv2.aruco.drawDetectedMarkers(image, corners, ids)
 
+        # 거부된 마커 후보 시각화 (빨간색으로 표시)
+        if rejected is not None and len(rejected) > 0:
+            cv2.aruco.drawDetectedMarkers(image, rejected, borderColor=(0, 0, 255))
+
     def draw_axes(self, image, rvec, tvec):
         """
         이미지에 ArUco 마커 좌표축을 그립니다.
@@ -84,7 +88,6 @@ class ArucoProcessor:
             tvec (np.ndarray): 변환 벡터.
         """
         if rvec is not None and tvec is not None:
-            # 수정된 부분: drawAxis 대신 drawFrameAxes 사용
             cv2.drawFrameAxes(image, self.camera_matrix, self.dist_coeffs, rvec, tvec, self.marker_length * 0.5)
 
     def get_pose_data(self, corners, ids, rvecs, tvecs):

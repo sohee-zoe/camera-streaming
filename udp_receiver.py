@@ -148,7 +148,7 @@ class UdpStreamReceiver:
 
                     # ArUco 마커 검출 및 처리
                     if self.aruco_processor:
-                        corners, ids, rvecs, tvecs = self.aruco_processor.detect_markers(undistorted_frame)
+                        corners, ids, rejected, rvecs, tvecs = self.aruco_processor.detect_markers(undistorted_frame)
                         aruco_data_list = self.aruco_processor.get_pose_data(corners, ids, rvecs, tvecs)
 
                         if aruco_data_list:  # 검출된 마커가 있다면
@@ -165,7 +165,7 @@ class UdpStreamReceiver:
                             print("--------------------------------------------------\n")
 
                         # 프레임에 마커 정보 그리기
-                        self.aruco_processor.draw_detected_markers(undistorted_frame, corners, ids)
+                        self.aruco_processor.draw_detected_markers(undistorted_frame, corners, ids, rejected)
                         if rvecs is not None and tvecs is not None and ids is not None:
                             for i in range(len(ids)):
                                 self.aruco_processor.draw_axes(undistorted_frame, rvecs[i], tvecs[i])
