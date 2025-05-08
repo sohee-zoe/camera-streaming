@@ -19,7 +19,7 @@ python camera_calibration.py --size 8x6 --square 0.025 --path "./frames" --outpu
 ## UDP 송신
 ```
 # 캘리브레이션 왜곡 보정 O
-python run_udp_sender.py --target_ip <> --port <>
+python run_udp_sender.py --target_ip <> --port <> --calib camera_params/jetcobot.yaml
 
 # 캘리브레이션 왜곡 보정 X
 python run_udp_sender.py --no_undistort
@@ -28,7 +28,7 @@ python run_udp_sender.py --no_undistort
 
 ## UDP 수신
 ```
-python run_udp_receiver.py
+python run_udp_receiver.py --calib camera_params/jetcobot.yaml
 ```
 
 

@@ -45,7 +45,6 @@ def main():
             quality=args.quality,
             calibration_file=args.calib,
             no_undistort=args.no_undistort
-            # send_buffer_size=args.send_buffer # 인자 추가 시
         )
 
         # 스트리밍 시작 (현재 스레드에서 실행, blocking)

@@ -1,244 +1,192 @@
-# 파일명: usb_streamer.py
-import os
+# usb_streamer.py
 import cv2
-import cv2.aruco as aruco # drawDetectedMarkers 사용 위해 유지
-import time
-import datetime
-import numpy as np # Numpy import
+import numpy as np
 import config
-from camera_handler import CameraHandler # 변경 없음
+from camera_handler import CameraHandler
+from stream_displayer import StreamDisplayer
+import signal
+import sys
+from aruco_processor import ArucoProcessor
 
 class UsbStreamer:
-    """
-    CameraHandler에서 프레임 및 ArUco 데이터를 받아 화면에 표시하고,
-    키 입력에 따라 원본 또는 화면 프레임을 저장합니다.
-    """
-    def __init__(self, camera_index=config.USB_CAMERA_INDEX,
-                 width=640, height=480, fps=30,
-                 calibration_file=None, no_undistort=False,
-                 detect_aruco=True,
-                 window_name=None, save_dir="captured_frames"):
+    def __init__(self, camera_index, width, height, fps, calibration_file=None, no_undistort=False):
+        self.camera_index = camera_index
+        self.width = width
+        self.height = height
         self.fps = fps
-        self.window_name = window_name if window_name else f"USB Camera {camera_index}"
+        self.calibration_file = calibration_file
+        self.no_undistort = no_undistort
         self.running = False
         self.cam_handler = None
-        self._display_fps = 0
-        self._frame_count = 0
-        self._start_time = time.time()
-        self.save_dir = save_dir
 
-        # 저장 디렉토리 생성
-        if self.save_dir:
-            if not os.path.exists(self.save_dir):
-                try:
-                    os.makedirs(self.save_dir)
-                    print(f"[INFO] 저장 디렉토리 생성됨: {self.save_dir}")
-                except OSError as e:
-                    print(f"[오류] 저장 디렉토리 생성 실패 ({self.save_dir}): {e}")
-                    self.save_dir = None # 저장 비활성화
-        else:
-             print("[INFO] 프레임 저장이 비활성화되었습니다 (저장 디렉토리 미지정).")
-
-        # CameraHandler 초기화 및 연결
         try:
             self.cam_handler = CameraHandler(
-                index=camera_index,
-                width=width, height=height, fps=fps, buffer_size=1,
-                calibration_file=calibration_file,
-                no_undistort=no_undistort,
-                detect_aruco=detect_aruco
+                index=self.camera_index,
+                width=self.width,
+                height=self.height,
+                fps=self.fps,
+                buffer_size=1,
+                calibration_file=self.calibration_file
             )
-            if not self.cam_handler.connect():
-                self.cam_handler = None
-                raise IOError(f"CameraHandler 연결 실패 (인덱스: {camera_index})")
-
-            cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-            cv2.resizeWindow(self.window_name, self.cam_handler.actual_width, self.cam_handler.actual_height)
-
-        except (IOError, Exception) as e:
-            print(f"[오류] USB 스트리머 초기화/연결 중 오류: {e}")
-            if self.cam_handler: self.cam_handler.disconnect()
-            self.cam_handler = None
+        except IOError as e:
+            print(f"[ERROR] 카메라 초기화 실패: {e}")
+            raise
+        except Exception as e:
+            print(f"[ERROR] CameraHandler 초기화 중 예기치 않은 오류: {e}")
             raise
 
-    def _calculate_fps(self):
-        """디스플레이 FPS 계산."""
-        self._frame_count += 1
-        now = time.time()
-        elapsed = now - self._start_time
-        if elapsed >= 1.0:
-            self._display_fps = self._frame_count / elapsed
-            self._frame_count = 0
-            self._start_time = now
+        # ArucoProcessor 초기화
+        camera_matrix, dist_coeffs = self.cam_handler.get_camera_parameters()
+        self.aruco_processor = ArucoProcessor(
+            camera_matrix=camera_matrix,
+            dist_coeffs=dist_coeffs,
+            marker_length=config.DEFAULT_ARUCO_LENGTH
+        )
 
-    def _save_frame(self, frame_to_save, filename_prefix="frame"):
-        """주어진 프레임을 저장 디렉토리에 저장."""
-        if frame_to_save is not None and self.save_dir:
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3] # 밀리초까지
-            filename = os.path.join(self.save_dir, f'{filename_prefix}_{timestamp}.jpg')
-            try:
-                cv2.imwrite(filename, frame_to_save)
-                print(f"[INFO] 프레임 저장됨: {filename}")
-            except Exception as e:
-                print(f"[오류] 프레임 저장 실패 ({filename}): {e}")
-        elif self.save_dir is None:
-            print("[경고] 프레임을 저장할 수 없습니다: 저장 디렉토리가 설정되지 않았습니다.")
-        else:
-            print("[경고] 프레임을 저장할 수 없습니다: 프레임 데이터가 없습니다.")
-
-    def display_loop(self):
-        """메인 디스플레이 루프. 키 입력 처리 포함."""
-        if not self.running: return
-        if not self.cam_handler or not self.cam_handler.is_connected: return
-
-        target_interval = 1.0 / self.fps if self.fps > 0 else 0
-        last_capture_time = time.time()
-        save_info = f"'{self.save_dir}'" if self.save_dir else "비활성화됨"
-
-        print(f"[INFO] 로컬 USB 카메라 스트리밍 시작.")
-        if self.cam_handler.perform_aruco_detection: print("[INFO] ArUco 감지 활성화됨 (CameraHandler 처리).")
-        if self.cam_handler.perform_undistortion and self.cam_handler.undistortion_ready: print("[INFO] 왜곡 보정 활성화됨 (CameraHandler 처리).")
-        if self.cam_handler.use_one_euro_filter: print("[INFO] OneEuroFilter 스무딩 활성화됨 (CameraHandler 처리).")
-        print("[INFO] 'q': 종료")
-        print(f"[INFO] 's': 원본 프레임 저장 (저장: {save_info})")
-        print(f"[INFO] 'd': 화면 프레임 저장 (저장: {save_info})")
-
-        while self.running:
-            current_time = time.time()
-            wait_time = target_interval - (current_time - last_capture_time)
-            if target_interval > 0 and wait_time > 0.001: time.sleep(wait_time)
-            last_capture_time = time.time()
-
-            # CameraHandler로부터 프레임 및 데이터 받기 (원본 프레임 포함)
-            ret, original_frame, processed_frame, aruco_data = self.cam_handler.get_frame()
-
-            if not ret or processed_frame is None: # processed_frame 기준으로 확인
-                time.sleep(0.1)
-                continue
-
-            # 화면에 표시하고 오버레이를 그릴 프레임 복사
-            display_frame = processed_frame.copy()
-
-            # --- ArUco 데이터 시각화 (display_frame에 그림) ---
-            if aruco_data is not None:
-                # 마커 테두리 그리기
-                all_corners = [marker['corners'] for marker in aruco_data]
-                all_ids = np.array([[marker['id']] for marker in aruco_data])
-                if all_corners and all_ids.size > 0:
-                    if hasattr(cv2, 'aruco') and hasattr(cv2.aruco, 'drawDetectedMarkers'):
-                        cv2.aruco.drawDetectedMarkers(display_frame, all_corners, all_ids)
-                    # else: 경고는 init에서 처리
-
-                marker_info_text = []
-                cam_matrix, dist_coeffs_orig = self.cam_handler.get_effective_camera_parameters()
-
-                if cam_matrix is not None:
-                    # 왜곡 계수 처리 (1D 또는 0벡터)
-                    dist_coeffs_for_draw = dist_coeffs_orig if dist_coeffs_orig is not None else np.zeros((5,), dtype=np.float32)
-
-                    for marker in aruco_data:
-                        # 좌표축 그리기
-                        try:
-                            # 필터링된 rvec, tvec 사용
-                            cv2.drawFrameAxes(display_frame, cam_matrix, dist_coeffs_for_draw,
-                                           marker['rvec'], marker['tvec'],
-                                           self.cam_handler.marker_length * 0.5)
-                        except Exception as e:
-                            print(f"[오류] cv2.drawFrameAxes 오류: {e}")
-
-                        # 텍스트 정보 준비
-                        try:
-                            marker_id = marker.get('id', 'N/A')
-                            tvec = marker.get('tvec')
-                            rot_z = marker.get('rotation_z')
-
-                            if tvec is not None and tvec.shape == (3, 1):
-                                x, y, z = tvec[0, 0], tvec[1, 0], tvec[2, 0]
-                            else: x, y, z = float('nan'), float('nan'), float('nan')
-
-                            r_val = rot_z if rot_z is not None else float('nan')
-                            info_str = f"ID {marker_id}: X={x:.2f} Y={y:.2f} Z={z:.2f} R={r_val:.1f}deg"
-                            marker_info_text.append(info_str)
-                        except Exception as e_text:
-                             print(f"[오류] ID {marker_id} 텍스트 정보 처리 오류: {e_text}")
-
-                    # 텍스트 정보 화면에 그리기
-                    y_offset = 60
-                    for text_line in marker_info_text:
-                        cv2.putText(display_frame, text_line, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1, cv2.LINE_AA)
-                        y_offset += 20
-                # else: cam_matrix None 경고는 init에서 처리
-
-            # --- ArUco 시각화 끝 ---
-
-            # FPS 계산 및 표시 (display_frame에 그림)
-            self._calculate_fps()
-            cv2.putText(display_frame, f"Display FPS: {self._display_fps:.1f}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-
-            # 최종 화면 표시
-            cv2.imshow(self.window_name, display_frame)
-
-            # --- 키 입력 처리 ---
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                print("[INFO] 'q' 키 눌림. 종료합니다.")
-                self.running = False
-                break
-            elif key == ord('s'):
-                # 원본 프레임 저장
-                self._save_frame(original_frame, filename_prefix="original_frame")
-            elif key == ord('d'):
-                # 화면에 표시된 프레임 저장
-                self._save_frame(display_frame, filename_prefix="display_frame")
-            # --- ---
-
-            # 창 닫기 버튼 처리
-            try:
-                if cv2.getWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE) < 1:
-                    print("[INFO] 디스플레이 창 닫힘. 종료합니다.")
-                    self.running = False
-                    break
-            except cv2.error: pass # 오류 무시
-
-        # --- 루프 종료 ---
-        print("[INFO] 디스플레이 루프 종료됨.")
+        self.displayer = StreamDisplayer(frame_queue=None, window_name="USB Camera Stream")
 
     def start_display(self):
-        """디스플레이 시작 및 정리 처리."""
-        if self.running: return
-        if not self.cam_handler or not self.cam_handler.is_connected:
-            print("[오류] 디스플레이 시작 불가: CameraHandler 준비 안 됨.")
-            return
-
         self.running = True
-        self._start_time = time.time()
-        self._frame_count = 0
-        try:
-            self.display_loop()
-        except Exception as e:
-             print(f"[오류] display_loop 중 예외 발생: {e}")
-             import traceback
-             traceback.print_exc()
-        finally:
-             self.stop_display() # 항상 정리 수행
+        self.display_loop()
 
     def stop_display(self):
-        """리소스 정리 (카메라, OpenCV 창)."""
-        print("[INFO] USB 스트리머 리소스 정리 시도...")
         self.running = False
-
+        self.displayer.stop_display()
         if self.cam_handler:
-            self.cam_handler.disconnect()
-            self.cam_handler = None
+            self.cam_handler.release_camera()
 
-        try:
-            # 창 존재 여부 확인 후 파괴
-            if cv2.getWindowProperty(self.window_name, cv2.WND_PROP_AUTOSIZE) >= 0:
-                 cv2.destroyWindow(self.window_name)
-                 cv2.waitKey(1)
-        except cv2.error: pass
-        except Exception as e: print(f"[경고] OpenCV 창 닫기 중 오류: {e}")
+    def display_loop(self):
+        if not self.running:
+            print("[ERROR] 디스플레이 루프 시작 불가: 실행 플래그 비활성.")
+            return
 
-        print("[INFO] USB 스트리머 중지됨.")
+        print("[INFO] 화면 표시 루프 시작.")
+        while self.running:
+            ret, original_frame = self.cam_handler.capture_frame(undistort=(not self.no_undistort))
 
+            if not ret:
+                print("[WARN] 카메라 프레임 캡처 실패.")
+                continue
+
+            display_frame = original_frame.copy() # 표시용 프레임 복사
+
+            # ArUco 마커 검출 및 처리
+            corners, ids, rvecs, tvecs = self.aruco_processor.detect_markers(display_frame)
+            aruco_data = self.aruco_processor.get_pose_data(corners, ids, rvecs, tvecs)
+
+            # 마커 테두리 및 좌표축 그리기
+            self.aruco_processor.draw_detected_markers(display_frame, corners, ids)
+            if rvecs is not None and tvecs is not None:
+                for i in range(len(ids)):
+                    self.aruco_processor.draw_axes(display_frame, rvecs[i], tvecs[i])
+
+            # ArUco 마커 pos, rot 값 콘솔 출력 및 화면 표시용 텍스트 준비
+            print("\n--- 감지된 ArUco 마커 정보 ---") # 콘솔 출력 시작
+            marker_info_text_for_display = [] # 화면 표시용 리스트 (기존 로직 활용)
+
+            cam_matrix, dist_coeffs_for_draw = self.cam_handler.get_effective_camera_parameters()
+            if cam_matrix is not None:
+                dist_coeffs_for_draw = dist_coeffs_for_draw if dist_coeffs_for_draw is not None else np.zeros((5,), dtype=np.float32)
+
+            if aruco_data is not None:
+                for marker in aruco_data:
+                    marker_id = marker.get('id', 'N/A')
+                    tvec = marker.get('tvec')  # 변환 벡터 (카메라 좌표계 기준 위치)
+                    rvec = marker.get('rvec')  # 회전 벡터 (카메라 좌표계 기준 회전)
+
+                    # 콘솔에 pos (tvec) 와 rot (rvec) 값 출력
+                    if tvec is not None:
+                        pos_str_console = f"  ID {marker_id}: Pos (tvec) = [X:{tvec[0,0]:.3f}, Y:{tvec[1,0]:.3f}, Z:{tvec[2,0]:.3f}] (단위: m, 마커 크기 설정에 따라 다름)"
+                        print(pos_str_console)
+                    if rvec is not None:
+                        rot_str_console = f"  ID {marker_id}: Rot (rvec) = [{rvec[0,0]:.3f}, {rvec[1,0]:.3f}, {rvec[2,0]:.3f}] (축-각 표현)"
+                        print(rot_str_console)
+                        # Z축 회전각 (이미 계산되어 있다면)
+                        rotation_z_deg = marker.get('rotation_z')
+                        if rotation_z_deg is not None:
+                            print(f"    ID {marker_id}: Z축 회전각 = {rotation_z_deg:.1f}도")
+
+                    try:
+                        x, y, z = (tvec[0,0], tvec[1,0], tvec[2,0]) if tvec is not None else (float('nan'), float('nan'), float('nan'))
+                        r_val = marker.get('rotation_z', float('nan'))
+                        info_str_display = f"ID {marker_id}: X={x:.2f} Y={y:.2f} Z={z:.2f} R={r_val:.1f}deg"
+                        marker_info_text_for_display.append(info_str_display)
+                    except Exception as e_draw:
+                        print(f"[오류] ID {marker_id} 시각화 정보 처리 오류: {e_draw}")
+            print("------------------------------\n") # 콘솔 출력 끝
+
+            # 화면에 텍스트 정보 그리기
+            y_offset = 60
+            for text_line in marker_info_text_for_display:
+                cv2.putText(display_frame, text_line, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1, cv2.LINE_AA)
+                y_offset += 20
+
+            # FPS 텍스트 화면에 표시
+            cv2.putText(display_frame, f"Display FPS: {self.displayer._display_fps:.1f}", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.imshow("USB Camera Stream", display_frame)
+
+            # 키 입력 처리
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                print("[INFO] 'q' 키 입력 감지. 종료합니다.")
+                self.running = False
+                break
+
+            if cv2.getWindowProperty("USB Camera Stream", cv2.WND_PROP_VISIBLE) < 1:
+                print("[INFO] 디스플레이 창이 닫혔습니다. 종료합니다.")
+                self.running = False
+                break
+
+        print("[INFO] 화면 표시 루프 종료됨.")
+        self.stop_display()
+
+# --- 종료 처리를 위한 전역 변수 및 핸들러 ---
+streamer_instance = None
+
+def signal_handler(sig, frame):
+    print("\n[정보] Ctrl+C 감지. USB 스트리머 종료 중...")
+    if streamer_instance:
+        streamer_instance.running = False
+
+signal.signal(signal.SIGINT, signal_handler)
+
+def main():
+    global streamer_instance
+    import argparse
+    parser = argparse.ArgumentParser(description="USB 카메라 로컬 스트리머 (클래스 기반)")
+    parser.add_argument("--camera", type=int, default=config.USB_CAMERA_INDEX, help=f"카메라 인덱스 (기본값: {config.USB_CAMERA_INDEX})")
+    parser.add_argument("--width", type=int, default=640, help="카메라 프레임 너비")
+    parser.add_argument("--height", type=int, default=480, help="카메라 프레임 높이")
+    parser.add_argument("--fps", type=int, default=30, help="카메라 목표 FPS")
+    parser.add_argument("--calib", type=str, default=config.GLOBAL_CALIBRATION_FILE, help="카메라 캘리브레이션 YAML 파일 경로")
+    parser.add_argument("--no_undistort", action='store_true', help="캘리브레이션 파일 있어도 왜곡 보정 안 함")
+
+    args = parser.parse_args()
+
+    try:
+        streamer_instance = UsbStreamer(
+            camera_index=args.camera,
+            width=args.width,
+            height=args.height,
+            fps=args.fps,
+            calibration_file=args.calib,
+            no_undistort=args.no_undistort
+        )
+
+        # 로컬 디스플레이 시작 (현재 스레드에서 실행, blocking)
+        streamer_instance.start_display()
+
+        # --- start_display() 종료 후 ---
+        print("[정보] USB 스트리머 루프 정상 종료됨.")
+
+    except (IOError, Exception) as e:
+        print(f"[치명적 오류] USB 스트리머 초기화 또는 실행 중 오류 발생: {e}")
+    finally:
+        # 최종 정리
+        if streamer_instance and streamer_instance.running:
+            streamer_instance.stop_display()
+        print("[정보] USB 스트리머 애플리케이션 종료.")
+
+if __name__ == "__main__":
+    main()
