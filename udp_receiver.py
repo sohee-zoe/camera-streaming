@@ -139,7 +139,7 @@ class UdpStreamReceiver:
                     if self.mapx is not None and self.mapy is not None:
                         try:
                             undistorted_frame = cv2.remap(cv_frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
-                            print(f"[INFO] 프레임 {frame_id} 왜곡 보정 완료.")
+                            # print(f"[INFO] 프레임 {frame_id} 왜곡 보정 완료.")
                         except Exception as e:
                             print(f"[ERROR] 왜곡 보정 중 오류: {e}")
                             undistorted_frame = cv_frame  # 오류 시 원본 사용
