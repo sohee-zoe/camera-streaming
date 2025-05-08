@@ -90,26 +90,49 @@ class ArucoProcessor:
     def get_pose_data(self, corners, ids, rvecs, tvecs):
         """
         ArUco 마커의 포즈 정보를 담은 리스트를 반환합니다.
+        쿼터니언 변환과 각도 연속성 유지 로직이 포함되어 있습니다.
         """
-        aruco_data = []
+        from scipy.spatial.transform import Rotation
 
+        aruco_data = []
         if ids is not None and corners is not None and rvecs is not None and tvecs is not None:
             for i, marker_id in enumerate(ids.flatten()):
                 marker_corners = corners[i]
                 rvec = rvecs[i]
                 tvec = tvecs[i]
 
-                # Z축 회전각 계산 (예시)
-                rotation_matrix, _ = cv2.Rodrigues(rvec)
-                z_rotation_angle = np.arctan2(rotation_matrix[1, 0], rotation_matrix[0, 0])
-                rotation_z_deg = np.degrees(z_rotation_angle)
+                # 회전 벡터를 쿼터니언으로 변환
+                rotation = Rotation.from_rotvec(rvec.flatten())
+
+                # 쿼터니언 정규화
+                quat = rotation.as_quat()  # [x, y, z, w] 형식
+                quat_norm = np.sqrt(np.sum(quat ** 2))
+                if quat_norm > 0:
+                    quat = quat / quat_norm
+
+                # 오일러 각으로 변환 (ZYX 순서)
+                euler_angles = rotation.as_euler('zyx', degrees=True)
+                rotation_z_deg = euler_angles[0]  # Z축 회전각
+
+                # 각도 연속성 유지
+                if hasattr(self, f'prev_rotation_z_{marker_id}'):
+                    prev_z = getattr(self, f'prev_rotation_z_{marker_id}')
+                    if abs(rotation_z_deg - prev_z) > 170:
+                        if rotation_z_deg > 0 and prev_z < 0:
+                            rotation_z_deg -= 360
+                        elif rotation_z_deg < 0 and prev_z > 0:
+                            rotation_z_deg += 360
+
+                # 현재 각도 저장
+                setattr(self, f'prev_rotation_z_{marker_id}', rotation_z_deg)
 
                 aruco_data.append({
                     'id': marker_id,
                     'corners': marker_corners,
                     'rvec': rvec,
                     'tvec': tvec,
+                    'quaternion': quat,
+                    'euler_angles': euler_angles,
                     'rotation_z': rotation_z_deg
                 })
-
         return aruco_data
