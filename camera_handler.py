@@ -74,7 +74,7 @@ class CameraHandler:
         if undistort and self.undistort_enabled:
             try:
                 undistorted_frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
-                print("[INFO] 왜곡 보정된 프레임 전달")
+                # print("[INFO] 왜곡 보정된 프레임 전달")
                 return undistorted_frame
             except Exception as e:
                 print(f"[ERROR] 왜곡 보정 중 오류 발생: {e}. 원본 프레임 반환.")

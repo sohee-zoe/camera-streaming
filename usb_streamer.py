@@ -66,26 +66,26 @@ class UsbStreamer:
         print("[INFO] 화면 표시 루프 시작.")
 
         while self.running:
-            # 원본 프레임 캡처
-            ret, original_frame = self.cam_handler.capture_frame(undistort=False)
-
-            if not ret:
+            original_frame = self.cam_handler.capture_frame(undistort=True)
+            if original_frame is None:
                 print("[WARN] 카메라 프레임 캡처 실패.")
                 continue
 
-            # 왜곡 보정 적용
-            undistorted_frame = None
-            if self.cam_handler.undistort_enabled and self.cam_handler.mapx is not None and self.cam_handler.mapy is not None:
-                try:
-                    undistorted_frame = cv2.remap(original_frame, self.cam_handler.mapx, self.cam_handler.mapy,
-                                                  cv2.INTER_LINEAR)
-                except Exception as e:
-                    print(f"[ERROR] 왜곡 보정 중 오류: {e}")
-                    undistorted_frame = original_frame
-            else:
-                undistorted_frame = original_frame
+            # # 왜곡 보정 적용
+            # undistorted_frame = None
+            # if self.cam_handler.undistort_enabled and self.cam_handler.mapx is not None and self.cam_handler.mapy is not None:
+            #     try:
+            #         undistorted_frame = cv2.remap(original_frame, self.cam_handler.mapx, self.cam_handler.mapy,
+            #                                       cv2.INTER_LINEAR)
+            #     except Exception as e:
+            #         print(f"[ERROR] 왜곡 보정 중 오류: {e}")
+            #         undistorted_frame = original_frame
+            # else:
+            #     undistorted_frame = original_frame
+            #
+            # display_frame = undistorted_frame.copy()  # 표시용 프레임 복사
 
-            display_frame = undistorted_frame.copy()  # 표시용 프레임 복사
+            display_frame = original_frame.copy()  # 표시용 프레임 복사
 
             # ArUco 마커 검출 및 처리 (왜곡 보정된 프레임 사용)
             corners, ids, rvecs, tvecs = self.aruco_processor.detect_markers(display_frame)
