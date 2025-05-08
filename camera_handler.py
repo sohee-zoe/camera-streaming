@@ -54,7 +54,7 @@ class CameraHandler:
 
                 if self.mapx is not None and self.mapy is not None:
                     self.undistort_enabled = True
-                    print("[INFO] 카메라 왜곡 보정 활성화됨.")
+                    print("[INFO] 카메라 왜곡 보정 맵 (mapx, mapy) 생성")
                 else:
                     print("[WARN] 왜곡 보정 맵(mapx, mapy) 생성 실패. 보정 비활성화.")
             except Exception as e:
@@ -74,11 +74,13 @@ class CameraHandler:
         if undistort and self.undistort_enabled:
             try:
                 undistorted_frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
+                print("[INFO] 왜곡 보정된 프레임 전달")
                 return undistorted_frame
             except Exception as e:
                 print(f"[ERROR] 왜곡 보정 중 오류 발생: {e}. 원본 프레임 반환.")
                 return frame
         else:
+            print("[INFO] 원본 프레임 전달")
             return frame
 
     def get_camera_parameters(self):
