@@ -165,7 +165,7 @@ class UdpStreamReceiver:
                             print("--------------------------------------------------\n")
 
                         # 프레임에 마커 정보 그리기
-                        self.aruco_processor.draw_detected_markers(undistorted_frame, corners, ids, rejected)
+                        self.aruco_processor.draw_detected_markers(undistorted_frame, corners, ids, None)
                         if rvecs is not None and tvecs is not None and ids is not None:
                             for i in range(len(ids)):
                                 self.aruco_processor.draw_axes(undistorted_frame, rvecs[i], tvecs[i])
